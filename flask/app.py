@@ -210,20 +210,58 @@ def log_interaction(user_id, domain, item, interaction_type, rating=None):
 # Helper Functions (Universal/Refactored)
 # ---------------------------
 
+# def recommend_cosine_similar_movies(genres, age_group=None, exclude_title=None, top_n=5):
+#     input_vector = mlb.transform([genres])
+#     similarities = cosine_similarity(input_vector, genre_matrix)[0]
+#     movies_copy = movies.copy()
+#     movies_copy['similarity'] = similarities
+    
+#     if age_group:
+#         movies_copy = movies_copy[movies_copy['age_group'].str.lower() == age_group.lower()]
+#     if exclude_title:
+#         movies_copy = movies_copy[~movies_copy['title'].str.lower().str.contains(exclude_title.lower(), na=False)]
+
+#     top_recommendations = movies_copy.sort_values(by='similarity', ascending=False).head(top_n)
+#     return top_recommendations[['title', 'genres', 'age_group', 'similarity']].reset_index(drop=True)
+
+import random
+# from sklearn.metrics.pairwise import cosine_similarity # Assuming this is imported
+# from sklearn.preprocessing import MultiLabelBinarizer # Assuming mlb is initialized
+# import pandas as pd # Assuming pandas is imported
+# ... other imports (movies, genre_matrix, mlb are assumed to be defined globally)
+
 def recommend_cosine_similar_movies(genres, age_group=None, exclude_title=None, top_n=5):
+    # Calculate the input vector based on the genres provided
+    # The genres should be a list, e.g., ["Action", "Thriller"]
     input_vector = mlb.transform([genres])
+    
+    # Calculate cosine similarity between the input vector and all movie genre vectors
     similarities = cosine_similarity(input_vector, genre_matrix)[0]
+    
     movies_copy = movies.copy()
     movies_copy['similarity'] = similarities
     
+    movies_copy['random_noise'] = movies_copy['similarity'].apply(lambda x: random.random() * 0.0001)
+    movies_copy['score_with_noise'] = movies_copy['similarity'] + movies_copy['random_noise']
+    
+    # Apply filtering (age_group and excluding the input movie)
     if age_group:
         movies_copy = movies_copy[movies_copy['age_group'].str.lower() == age_group.lower()]
+        
     if exclude_title:
         movies_copy = movies_copy[~movies_copy['title'].str.lower().str.contains(exclude_title.lower(), na=False)]
 
-    top_recommendations = movies_copy.sort_values(by='similarity', ascending=False).head(top_n)
+    # 🌟 Sort by the new score_with_noise column 🌟
+    # This ensures that movies with the same high similarity are randomly ordered.
+    top_recommendations = movies_copy.sort_values(
+        by='score_with_noise', 
+        ascending=False
+    ).head(top_n)
+    
+    # Return only the relevant columns (using the original 'similarity' score)
     return top_recommendations[['title', 'genres', 'age_group', 'similarity']].reset_index(drop=True)
 
+# NOTE: You must restart your Python backend (e.g., gunicorn) after applying this change.
 def recommend_books_from_genres(genres, top_n=5):
     query_vec = tfidf_books.transform([" ".join(genres)])
     similarities = cosine_similarity(query_vec, book_tfidf_matrix)[0]
@@ -687,32 +725,12 @@ def recommend_movies_from_song():
 # ---------------------------
 # Existing CRUD and Utility Endpoints (MODIFIED FOR PERSISTENCE LOGGING)
 # ---------------------------
-# @app.route('/api/movies', methods=['GET'])
-# def get_movies():
-#     movie_list = []
-#     try:
-#         # NOTE: Using the loaded 'ratings' global dict which is now persistent
-#         for _, row in movies.iterrows():
-#             title = row['title']
-#             genres = row['genres']
-#             age_group = row.get('age_group', 'Adults')
-#             avg_rating = None
-#             if title in ratings and len(ratings[title]) > 0:
-#                 avg_rating = sum(ratings[title]) / len(ratings[title])
-#             movie_list.append({
-#                 "title": title,
-#                 "genres": genres,
-#                 "age_group": age_group,
-#                 "rating": avg_rating
-#             })
-#         return jsonify(movie_list)
-#     except Exception as e:
-#         return jsonify({"error": str(e)}), 500
 @app.route('/api/movies', methods=['GET'])
 def get_movies():
     movie_list = []
     try:
-        for idx, row in movies.iterrows():
+        # NOTE: Using the loaded 'ratings' global dict which is now persistent
+        for _, row in movies.iterrows():
             title = row['title']
             genres = row['genres']
             age_group = row.get('age_group', 'Adults')
@@ -720,7 +738,6 @@ def get_movies():
             if title in ratings and len(ratings[title]) > 0:
                 avg_rating = sum(ratings[title]) / len(ratings[title])
             movie_list.append({
-                "id": idx,        # Use original DataFrame index as ID
                 "title": title,
                 "genres": genres,
                 "age_group": age_group,
@@ -730,51 +747,23 @@ def get_movies():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-
-@app.route('/api/movies/<int:index>', methods=['DELETE'])
-def delete_movie(index):
-    global movies
+@app.route('/api/movies/<int:index>', methods=['PUT'])
+def update_movie(index):
     try:
-        if index not in movies.index:
+        data = request.get_json()
+        if index < 0 or index >= len(movies):
             return jsonify({"error": "Invalid index"}), 400
-
-        # Delete movie without resetting index
-        title_to_delete = movies.loc[index, 'title']
-        movies = movies.drop(index)
-
-        # Also remove from ratings if exists
-        if title_to_delete in ratings:
-            del ratings[title_to_delete]
-
-        # Save to CSV persistently
+        for key in data:
+            if key in movies.columns:
+                movies.at[index, key] = data[key]
+        
+        # Save to CSV only if a file system is available and a real file was loaded
         if os.path.exists("movie.csv"):
             movies.to_csv("movie.csv", index=False)
-
-        return jsonify({"message": f"Movie '{title_to_delete}' deleted successfully", "id": index}), 200
-
-    except Exception as e:
-        print("Error deleting movie:", str(e))
-        return jsonify({"error": str(e)}), 500
-
-
-# @app.route('/api/movies/<int:index>', methods=['DELETE'])
-# def update_movie(index):
-#     try:
-#         data = request.get_json()
-#         if index < 0 or index >= len(movies):
-#             return jsonify({"error": "Invalid index"}), 400
-#         for key in data:
-#             if key in movies.columns:
-#                 movies.at[index, key] = data[key]
-        
-#         # Save to CSV only if a file system is available and a real file was loaded
-#         if os.path.exists("movie.csv"):
-#             movies.to_csv("movie.csv", index=False)
             
-#         return jsonify({"message": "Movie updated successfully"})
-#     except Exception as e:
-#         return jsonify({"error": str(e)}), 500
-
+        return jsonify({"message": "Movie updated successfully"})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 books = pd.read_csv("books.csv")
 
 @app.route('/api/books', methods=['GET'])
