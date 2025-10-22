@@ -76,20 +76,29 @@ function ManageRecommendations() {
     }
   };
 
+  // Delete movie with alert and instant remove
   const deleteMovie = async (id) => {
-    try {
-      await fetch(`http://localhost:5001/api/movies/${id}`, { method: "DELETE" });
-      fetchMovies();
-    } catch (err) {
-      console.error(err);
+  try {
+    const res = await fetch(`http://localhost:5001/api/movies/${id}`, { method: "DELETE" });
+    const data = await res.json();
+    if (res.ok) {
+      alert(data.message); // simple alert
+      setMovies((prev) => prev.filter((m) => m.id !== id)); // remove from state without refetch
+    } else {
+      alert("Error: " + data.error);
     }
-  };
+  } catch (err) {
+    console.error(err);
+    alert("Failed to delete movie.");
+  }
+};
+
 
   const handleEdit = (movie) => {
     const newTitle = prompt("Enter new title:", movie.title);
     const newGenres = prompt("Enter new genres:", movie.genres);
     if (newTitle && newGenres) {
-      updateMovie(movie.id, { title: newTitle, genres: newGenres });
+      updateMovie(movie.id ?? movie.index ?? 0, { title: newTitle, genres: newGenres });
     }
   };
 
@@ -153,14 +162,14 @@ function ManageRecommendations() {
               </tr>
             </thead>
             <tbody>
-              {movies.map((movie) => (
+              {movies.map((movie, index) => (
                 <tr key={movie.id} style={styles.tr}>
                   <td style={styles.td}>{movie.title}</td>
                   <td style={styles.td}>{movie.genres}</td>
                   <td style={styles.td}>
                     <div style={styles.actionContainer}>
                       <button style={styles.editBtn} onClick={() => handleEdit(movie)}>Edit</button>
-                      <button style={styles.deleteBtn} onClick={() => deleteMovie(movie.id)}>Delete</button>
+                      <button style={styles.deleteBtn} onClick={() => deleteMovie(movie.id, index)}>Delete</button>
                     </div>
                   </td>
                 </tr>
@@ -181,7 +190,7 @@ function ManageRecommendations() {
               </tr>
             </thead>
             <tbody>
-              {books.map((book) => (
+              {books.map((book, index) => (
                 <tr key={book.book_id} style={styles.tr}>
                   <td style={styles.td}>{book.title}</td>
                   <td style={styles.td}>{book.original_title}</td>
@@ -190,8 +199,10 @@ function ManageRecommendations() {
                     <button
                       style={styles.deleteBtn}
                       onClick={async () => {
+                        if (!window.confirm("Are you sure you want to delete this book?")) return;
                         await fetch(`http://localhost:5001/api/books/${book.index}`, { method: "DELETE" });
-                        setBooks(books.filter((b) => b.book_id !== book.book_id));
+                        setBooks((prev) => prev.filter((_, i) => i !== index));
+                        alert("Book deleted!");
                       }}
                     >
                       Delete
@@ -215,7 +226,7 @@ function ManageRecommendations() {
               </tr>
             </thead>
             <tbody>
-              {songs.map((song) => (
+              {songs.map((song, index) => (
                 <tr key={song.index} style={styles.tr}>
                   <td style={styles.td}>{song.title}</td>
                   <td style={styles.td}>{song.artist}</td>
@@ -224,8 +235,10 @@ function ManageRecommendations() {
                     <button
                       style={styles.deleteBtn}
                       onClick={async () => {
+                        if (!window.confirm("Are you sure you want to delete this song?")) return;
                         await fetch(`http://localhost:5001/api/songs/${song.index}`, { method: "DELETE" });
-                        setSongs(songs.filter((s) => s.index !== song.index));
+                        setSongs((prev) => prev.filter((_, i) => i !== index));
+                        alert("Song deleted!");
                       }}
                     >
                       Delete
