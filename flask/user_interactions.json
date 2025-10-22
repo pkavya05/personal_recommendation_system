@@ -516,6 +516,18 @@
                 "item": "Ghungroo",
                 "type": "similar_request",
                 "rating": null
+            },
+            {
+                "domain": "movies",
+                "item": "Baahubali: The Beginning",
+                "type": "favorite",
+                "rating": null
+            },
+            {
+                "domain": "movies",
+                "item": "Bangalore Days",
+                "type": "favorite",
+                "rating": null
             }
         ]
     },
