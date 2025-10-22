@@ -687,12 +687,32 @@ def recommend_movies_from_song():
 # ---------------------------
 # Existing CRUD and Utility Endpoints (MODIFIED FOR PERSISTENCE LOGGING)
 # ---------------------------
+# @app.route('/api/movies', methods=['GET'])
+# def get_movies():
+#     movie_list = []
+#     try:
+#         # NOTE: Using the loaded 'ratings' global dict which is now persistent
+#         for _, row in movies.iterrows():
+#             title = row['title']
+#             genres = row['genres']
+#             age_group = row.get('age_group', 'Adults')
+#             avg_rating = None
+#             if title in ratings and len(ratings[title]) > 0:
+#                 avg_rating = sum(ratings[title]) / len(ratings[title])
+#             movie_list.append({
+#                 "title": title,
+#                 "genres": genres,
+#                 "age_group": age_group,
+#                 "rating": avg_rating
+#             })
+#         return jsonify(movie_list)
+#     except Exception as e:
+#         return jsonify({"error": str(e)}), 500
 @app.route('/api/movies', methods=['GET'])
 def get_movies():
     movie_list = []
     try:
-        # NOTE: Using the loaded 'ratings' global dict which is now persistent
-        for _, row in movies.iterrows():
+        for idx, row in movies.iterrows():
             title = row['title']
             genres = row['genres']
             age_group = row.get('age_group', 'Adults')
@@ -700,6 +720,7 @@ def get_movies():
             if title in ratings and len(ratings[title]) > 0:
                 avg_rating = sum(ratings[title]) / len(ratings[title])
             movie_list.append({
+                "id": idx,        # Use original DataFrame index as ID
                 "title": title,
                 "genres": genres,
                 "age_group": age_group,
@@ -709,23 +730,51 @@ def get_movies():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-@app.route('/api/movies/<int:index>', methods=['PUT'])
-def update_movie(index):
+
+@app.route('/api/movies/<int:index>', methods=['DELETE'])
+def delete_movie(index):
+    global movies
     try:
-        data = request.get_json()
-        if index < 0 or index >= len(movies):
+        if index not in movies.index:
             return jsonify({"error": "Invalid index"}), 400
-        for key in data:
-            if key in movies.columns:
-                movies.at[index, key] = data[key]
-        
-        # Save to CSV only if a file system is available and a real file was loaded
+
+        # Delete movie without resetting index
+        title_to_delete = movies.loc[index, 'title']
+        movies = movies.drop(index)
+
+        # Also remove from ratings if exists
+        if title_to_delete in ratings:
+            del ratings[title_to_delete]
+
+        # Save to CSV persistently
         if os.path.exists("movie.csv"):
             movies.to_csv("movie.csv", index=False)
-            
-        return jsonify({"message": "Movie updated successfully"})
+
+        return jsonify({"message": f"Movie '{title_to_delete}' deleted successfully", "id": index}), 200
+
     except Exception as e:
+        print("Error deleting movie:", str(e))
         return jsonify({"error": str(e)}), 500
+
+
+# @app.route('/api/movies/<int:index>', methods=['DELETE'])
+# def update_movie(index):
+#     try:
+#         data = request.get_json()
+#         if index < 0 or index >= len(movies):
+#             return jsonify({"error": "Invalid index"}), 400
+#         for key in data:
+#             if key in movies.columns:
+#                 movies.at[index, key] = data[key]
+        
+#         # Save to CSV only if a file system is available and a real file was loaded
+#         if os.path.exists("movie.csv"):
+#             movies.to_csv("movie.csv", index=False)
+            
+#         return jsonify({"message": "Movie updated successfully"})
+#     except Exception as e:
+#         return jsonify({"error": str(e)}), 500
+
 books = pd.read_csv("books.csv")
 
 @app.route('/api/books', methods=['GET'])
